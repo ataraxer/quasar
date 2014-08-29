@@ -7,7 +7,32 @@ import scala.language.experimental.macros
 
 
 trait Serializable[T] {
+  import Serializable._
+
+  def put(buffer: ByteBuffer): Unit
+  def get(buffer: ByteBuffer): T
+}
+
+
+object Serializable {
+  implicit class CountLoop(count: Int) {
+    def times[T](code: => T): Seq[T] = {
+      val result = for (_ <- 1 to count) yield code
+      result.toSeq
+    }
+  }
+
+
   implicit class RichBuffer(buffer: ByteBuffer) {
+    def getSeq[T](implicit serializer: Serializable[T]): Seq[T] = {
+      val size = buffer.getInt
+      size times getObject[T]
+    }
+
+    def getObject[T](implicit serializer: Serializable[T]): T = {
+      serializer.get(buffer)
+    }
+
     def getString: String = {
       val size = buffer.getShort
       if (size > 0) {
@@ -20,12 +45,7 @@ trait Serializable[T] {
     }
   }
 
-  def put(buffer: ByteBuffer): Unit
-  def get(buffer: ByteBuffer): T
-}
 
-
-object Serializable {
   implicit def materializeSerializable[T]: Serializable[T] =
     macro materializeSerializableImpl[T]
 
@@ -34,32 +54,44 @@ object Serializable {
     import c.universe._
 
     val inputType = weakTypeOf[T]
-    val declarations = inputType.declarations
-    val constructor = declarations.collectFirst {
-      case m: MethodSymbol if m.isPrimaryConstructor => m
-    } get
 
-    val fields = constructor.paramss.head
+    val getter = inputType match {
+      case t if t == typeOf[Short] => {
+        q"buffer.getShort"
+      }
 
-    val serializedParams = fields map { field =>
-      val fieldName = field.asTerm.name
-      val fieldType = field.typeSignature
+      case t if t == typeOf[Int] => {
+        q"buffer.getInt"
+      }
 
-      fieldType match {
-        case t if t == typeOf[Short] =>
-          q"buffer.getShort"
-        case t if t == typeOf[Int] =>
-          q"buffer.getInt"
-        case t if t == typeOf[String] =>
-          q"buffer.getString"
-        case _ =>
-          q"???"
+      case t if t == typeOf[String] => {
+        q"buffer.getString"
+      }
+
+      case t if t <:< typeOf[Seq[Any]] => {
+        val tParam = t.typeArgs.head
+        q"buffer.getSeq[$tParam]"
+      }
+
+      case t => {
+        val declarations = t.declarations
+        val constructor = declarations.collectFirst {
+          case m: MethodSymbol if m.isPrimaryConstructor => m
+        } get
+
+        val fields = constructor.paramss.head
+
+        val serializedParams = fields map { field =>
+          //val fieldName = field.asTerm.name
+          val fieldType = field.typeSignature
+          q"buffer.getObject[$fieldType]"
+        }
+
+        val fieldIdents = fields map { field => q"$field" }
+        q"new $inputType(..$serializedParams)"
       }
     }
 
-    val fieldIdents = fields map { field => q"$field" }
-
-    val getter = q"new $inputType(..$serializedParams)"
 
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
