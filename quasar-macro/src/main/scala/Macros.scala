@@ -7,6 +7,19 @@ import scala.language.experimental.macros
 
 
 trait Serializable[T] {
+  implicit class RichBuffer(buffer: ByteBuffer) {
+    def getString: String = {
+      val size = buffer.getShort
+      if (size > 0) {
+        val bytes = new Array[Byte](size)
+        buffer.get(bytes)
+        new String(bytes, "UTF-8")
+      } else {
+        throw new Exception("empty string")
+      }
+    }
+  }
+
   def put(buffer: ByteBuffer): Unit
   def get(buffer: ByteBuffer): T
 }
@@ -37,6 +50,8 @@ object Serializable {
           q"buffer.getShort"
         case t if t == typeOf[Int] =>
           q"buffer.getInt"
+        case t if t == typeOf[String] =>
+          q"buffer.getString"
         case _ =>
           q"???"
       }

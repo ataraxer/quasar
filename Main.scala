@@ -3,14 +3,16 @@ package com.ataraxer.quasar
 import java.nio.ByteBuffer
 
 
-case class Foo(ap: Int, b: Short)
+case class Foo(a: Int, s: String)
 
 object QuasarMain extends App {
   import Serializable._
 
-  val buffer = ByteBuffer.allocate(4 + 2)
+  val string = "Freaking awesome!".getBytes("UTF-8")
+  val buffer = ByteBuffer.allocate(4 + 2 + string.size)
   buffer.putInt(9000)
-  buffer.putShort(42)
+  buffer.putShort(string.size.toShort)
+  buffer.put(string)
   buffer.rewind
 
   val serializer = materializeSerializable[Foo]
