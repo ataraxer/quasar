@@ -7,32 +7,13 @@ import scala.language.experimental.macros
 
 
 trait Serializable[T] {
-  import Serializable._
-
   def put(buffer: ByteBuffer): Unit
   def get(buffer: ByteBuffer): T
 }
 
 
 object Serializable {
-  implicit class CountLoop(count: Int) {
-    def times[T](code: => T): Seq[T] = {
-      val result = for (_ <- 1 to count) yield code
-      result.toSeq
-    }
-  }
-
-
   implicit class RichBuffer(buffer: ByteBuffer) {
-    def getSeq[T](implicit serializer: Serializable[T]): Seq[T] = {
-      val size = buffer.getInt
-      size times getObject[T]
-    }
-
-    def getObject[T](implicit serializer: Serializable[T]): T = {
-      serializer.get(buffer)
-    }
-
     def getString: String = {
       val size = buffer.getShort
       if (size > 0) {
@@ -42,6 +23,16 @@ object Serializable {
       } else {
         throw new Exception("empty string")
       }
+    }
+
+    def getSeq[T](implicit serializer: Serializable[T]): Seq[T] = {
+      val size = buffer.getInt
+      val result = for (_ <- 1 to size) yield getObject[T]
+      result.toSeq
+    }
+
+    def getObject[T](implicit serializer: Serializable[T]): T = {
+      serializer.get(buffer)
     }
   }
 
@@ -55,24 +46,20 @@ object Serializable {
 
     val inputType = weakTypeOf[T]
 
+
     val getter = inputType match {
-      case t if t == typeOf[Short] => {
-        q"buffer.getShort"
-      }
+      /* ==== Primitives ==== */
+      case t if t == typeOf[Short]  => q"buffer.getShort"
+      case t if t == typeOf[Int]    => q"buffer.getInt"
+      case t if t == typeOf[String] => q"buffer.getString"
 
-      case t if t == typeOf[Int] => {
-        q"buffer.getInt"
-      }
-
-      case t if t == typeOf[String] => {
-        q"buffer.getString"
-      }
-
+      /* ==== Sequences ==== */
       case t if t <:< typeOf[Seq[Any]] => {
         val tParam = t.typeArgs.head
         q"buffer.getSeq[$tParam]"
       }
 
+      /* ==== Case classes ==== */
       case t => {
         val declarations = t.declarations
         val constructor = declarations.collectFirst {
