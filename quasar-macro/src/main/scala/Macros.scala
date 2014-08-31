@@ -27,11 +27,11 @@ object Serializable {
 
     def getSeq[T](implicit serializer: Serializable[T]): Seq[T] = {
       val size = buffer.getInt
-      val result = for (_ <- 1 to size) yield getObject[T]
+      val result = for (_ <- 1 to size) yield read[T]
       result.toSeq
     }
 
-    def getObject[T](implicit serializer: Serializable[T]): T = {
+    def read[T](implicit serializer: Serializable[T]): T = {
       serializer.get(buffer)
     }
   }
@@ -77,7 +77,7 @@ class SerializableImpl(val c: Context) {
 
         val serializedParams = fields map { field =>
           val fieldType = field.typeSignature
-          q"buffer.getObject[$fieldType]"
+          q"buffer.read[$fieldType]"
         }
 
         q"new $inputType(..$serializedParams)"
