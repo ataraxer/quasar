@@ -14,6 +14,8 @@ trait Serializable[T] {
 
 object Serializable {
   implicit class RichBuffer(buffer: ByteBuffer) {
+    val Encoding = "UTF-8"
+
     def getString: String = {
       val size = buffer.getShort
       if (size > 0) {
@@ -25,8 +27,18 @@ object Serializable {
       }
     }
 
+    def putString(string: String): Unit = {
+      val stringBytes = string.getBytes(Encoding)
+      buffer.putShort(stringBytes.size.toShort)
+      buffer.put(stringBytes)
+    }
+
     def read[T](implicit serializer: Serializable[T]): T = {
       serializer.get(buffer)
+    }
+
+    def write[T](value: T)(implicit serializer: Serializable[T]): Unit = {
+      serializer.put(buffer, value)
     }
   }
 
@@ -49,12 +61,45 @@ class SerializableImpl(val c: Context) {
   }
 
 
+  private def generatePutter(inputType: Type, valueId: Tree): Tree = {
+    inputType match {
+      /* ==== Primitives ==== */
+      case t if t <:< typeOf[Short]  => q"buffer.putShort($valueId)"
+      case t if t <:< typeOf[Int]    => q"buffer.putInt($valueId)"
+      case t if t <:< typeOf[String] => q"buffer.putString($valueId)"
+
+      /* ==== Sequences ==== */
+      case t if t <:< typeOf[Seq[Any]] => {
+        val tParam = t.typeArgs.head
+        val putter = generatePutter(tParam, q"item")
+        q"""
+        buffer.putInt($valueId.size)
+        for (item <- $valueId) $putter
+        """
+      }
+
+      /* ==== Case classes ==== */
+      case t => {
+        val fields = caseClassFields(inputType)
+
+        val serializedParams = fields map { field =>
+          val fieldName = field.asTerm.name
+          val fieldType = field.typeSignature
+          generatePutter(fieldType, q"$valueId.$fieldName")
+        }
+
+        q"..$serializedParams"
+      }
+    }
+  }
+
+
   private def generateGetter(inputType: Type): Tree = {
     inputType match {
       /* ==== Primitives ==== */
-      case t if t == typeOf[Short]  => q"buffer.getShort"
-      case t if t == typeOf[Int]    => q"buffer.getInt"
-      case t if t == typeOf[String] => q"buffer.getString"
+      case t if t <:< typeOf[Short]  => q"buffer.getShort"
+      case t if t <:< typeOf[Int]    => q"buffer.getInt"
+      case t if t <:< typeOf[String] => q"buffer.getString"
 
       /* ==== Sequences ==== */
       case t if t <:< typeOf[Seq[Any]] => {
@@ -84,10 +129,11 @@ class SerializableImpl(val c: Context) {
     val inputType = weakTypeOf[T]
 
     val getter = generateGetter(inputType)
+    val putter = generatePutter(inputType, q"value")
 
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
-        def put(buffer: ByteBuffer, value: $inputType) = ???
+        def put(buffer: ByteBuffer, value: $inputType) = { $putter }
         def get(buffer: ByteBuffer) = { $getter }
       }
     """ }
