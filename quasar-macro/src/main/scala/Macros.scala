@@ -1,6 +1,6 @@
 package com.ataraxer.quasar
 
-import scala.reflect.macros.Context
+import scala.reflect.macros.blackbox.Context
 import java.nio.ByteBuffer
 
 import scala.language.experimental.macros
@@ -38,12 +38,24 @@ object Serializable {
 
 
   implicit def materializeSerializable[T]: Serializable[T] =
-    macro materializeSerializableImpl[T]
+    macro SerializableImpl.materializeSerializable[T]
+}
 
 
-  def materializeSerializableImpl[T: c.WeakTypeTag](c: Context) = {
-    import c.universe._
+class SerializableImpl(val c: Context) {
+  import c.universe._
 
+  private def caseClassFields(caseClass: Type) = {
+    val declarations = caseClass.declarations
+    val constructor = declarations.collectFirst {
+      case m: MethodSymbol if m.isPrimaryConstructor => m
+    } get
+
+    constructor.paramss.head
+  }
+
+
+  def materializeSerializable[T: c.WeakTypeTag] = {
     val inputType = weakTypeOf[T]
 
 
@@ -61,20 +73,13 @@ object Serializable {
 
       /* ==== Case classes ==== */
       case t => {
-        val declarations = t.declarations
-        val constructor = declarations.collectFirst {
-          case m: MethodSymbol if m.isPrimaryConstructor => m
-        } get
-
-        val fields = constructor.paramss.head
+        val fields = caseClassFields(inputType)
 
         val serializedParams = fields map { field =>
-          //val fieldName = field.asTerm.name
           val fieldType = field.typeSignature
           q"buffer.getObject[$fieldType]"
         }
 
-        val fieldIdents = fields map { field => q"$field" }
         q"new $inputType(..$serializedParams)"
       }
     }
