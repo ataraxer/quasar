@@ -9,25 +9,19 @@ case class Bar(name: String, foo: Foo)
 object QuasarMain extends App {
   import Serializable._
 
-  val fooName = "Sir Foo".getBytes("UTF-8")
-  val barName = "Mr. Bar".getBytes("UTF-8")
+  val fooName = "Sir Foo"
+  val barName = "Mr. Bar"
 
   val buffer = ByteBuffer.allocate(
     2 + barName.size + // Bar.name
     2 + fooName.size + // Foo.name | Bar.foo
     4 + (4 * 3))       // Foo.replicas | Bar.foo
 
-  buffer.putShort(barName.size.toShort)
-  buffer.put(barName)
-  buffer.putShort(fooName.size.toShort)
-  buffer.put(fooName)
-  buffer.putInt(3)
-  buffer.putInt(9000)
-  buffer.putInt(42)
-  buffer.putInt(-1)
+  val originalBar = Bar(barName, Foo(fooName, List(1, 2, 3)))
+  buffer.write(originalBar)
   buffer.rewind
 
-  val bar = buffer.getObject[Bar]
+  val bar = buffer.read[Bar]
 
   println(bar)
 }
