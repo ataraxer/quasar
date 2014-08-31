@@ -7,7 +7,7 @@ import scala.language.experimental.macros
 
 
 trait Serializable[T] {
-  def put(buffer: ByteBuffer): Unit
+  def put(buffer: ByteBuffer, value: T): Unit
   def get(buffer: ByteBuffer): T
 }
 
@@ -87,8 +87,8 @@ class SerializableImpl(val c: Context) {
 
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
-        def put(buffer: ByteBuffer): Unit = ???
-        def get(buffer: ByteBuffer): $inputType = { $getter }
+        def put(buffer: ByteBuffer, value: $inputType) = ???
+        def get(buffer: ByteBuffer) = { $getter }
       }
     """ }
   }
