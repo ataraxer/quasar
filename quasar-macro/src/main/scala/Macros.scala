@@ -55,11 +55,8 @@ class SerializableImpl(val c: Context) {
   }
 
 
-  def materializeSerializable[T: c.WeakTypeTag] = {
-    val inputType = weakTypeOf[T]
-
-
-    val getter = inputType match {
+  private def generateGetter(inputType: Type): Tree = {
+    inputType match {
       /* ==== Primitives ==== */
       case t if t == typeOf[Short]  => q"buffer.getShort"
       case t if t == typeOf[Int]    => q"buffer.getInt"
@@ -77,13 +74,19 @@ class SerializableImpl(val c: Context) {
 
         val serializedParams = fields map { field =>
           val fieldType = field.typeSignature
-          q"buffer.read[$fieldType]"
+          generateGetter(fieldType)
         }
 
         q"new $inputType(..$serializedParams)"
       }
     }
+  }
 
+
+  def materializeSerializable[T: c.WeakTypeTag] = {
+    val inputType = weakTypeOf[T]
+
+    val getter = generateGetter(inputType)
 
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
