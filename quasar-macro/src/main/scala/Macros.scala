@@ -25,12 +25,6 @@ object Serializable {
       }
     }
 
-    def getSeq[T](implicit serializer: Serializable[T]): Seq[T] = {
-      val size = buffer.getInt
-      val result = for (_ <- 1 to size) yield read[T]
-      result.toSeq
-    }
-
     def read[T](implicit serializer: Serializable[T]): T = {
       serializer.get(buffer)
     }
@@ -65,7 +59,10 @@ class SerializableImpl(val c: Context) {
       /* ==== Sequences ==== */
       case t if t <:< typeOf[Seq[Any]] => {
         val tParam = t.typeArgs.head
-        q"buffer.getSeq[$tParam]"
+        val getter = generateGetter(tParam)
+        q"""
+        (for (_ <- 1 to buffer.getInt) yield $getter).toSeq
+        """
       }
 
       /* ==== Case classes ==== */
