@@ -9,6 +9,7 @@ import scala.language.experimental.macros
 trait Serializable[T] {
   def put(buffer: ByteBuffer, value: T): Unit
   def get(buffer: ByteBuffer): T
+  def sizeOf(value: T): Int
 }
 
 
@@ -40,6 +41,11 @@ object Serializable {
     def write[T](value: T)(implicit serializer: Serializable[T]): Unit = {
       serializer.put(buffer, value)
     }
+  }
+
+
+  def sizeOf[T](value: T)(implicit serializer: Serializable[T]): Int = {
+    serializer.sizeOf(value)
   }
 
 
@@ -125,16 +131,53 @@ class SerializableImpl(val c: Context) {
   }
 
 
+  private def generateSizer(inputType: Type, valueId: Tree): Tree = {
+    inputType match {
+      /* ==== Primitives ==== */
+      case t if t <:< typeOf[Short]  => q"2"
+      case t if t <:< typeOf[Int]    => q"4"
+      case t if t <:< typeOf[String] =>
+        q"""2 + $valueId.getBytes("UTF-8").size"""
+
+      /* ==== Sequences ==== */
+      case t if t <:< typeOf[Seq[Any]] => {
+        val tParam = t.typeArgs.head
+        val sizer = generateSizer(tParam, q"item")
+        q"""
+        4 + (for (item <- $valueId) yield $sizer).sum
+        """
+      }
+
+      /* ==== Case classes ==== */
+      case t => {
+        val fields = caseClassFields(inputType)
+
+        val serializedParams = fields map { field =>
+          val fieldName = field.asTerm.name
+          val fieldType = field.typeSignature
+          generateSizer(fieldType, q"$valueId.$fieldName")
+        }
+
+        q"List(..$serializedParams).sum"
+      }
+    }
+  }
+
+
   def materializeSerializable[T: c.WeakTypeTag] = {
     val inputType = weakTypeOf[T]
 
     val getter = generateGetter(inputType)
     val putter = generatePutter(inputType, q"value")
+    val sizer = generateSizer(inputType, q"value")
+
+    println(sizer)
 
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
         def put(buffer: ByteBuffer, value: $inputType) = { $putter }
         def get(buffer: ByteBuffer) = { $getter }
+        def sizeOf(value: $inputType) = { List(..$sizer).sum }
       }
     """ }
   }

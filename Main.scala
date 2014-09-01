@@ -12,12 +12,8 @@ object QuasarMain extends App {
   val fooName = "Sir Foo"
   val barName = "Mr. Bar"
 
-  val buffer = ByteBuffer.allocate(
-    2 + barName.size + // Bar.name
-    2 + fooName.size + // Foo.name | Bar.foo
-    4 + (4 * 3))       // Foo.replicas | Bar.foo
-
   val originalBar = Bar(barName, Foo(fooName, List(1, 2, 3)))
+  val buffer = ByteBuffer.allocate(sizeOf(originalBar))
   buffer.write(originalBar)
   buffer.rewind
 
