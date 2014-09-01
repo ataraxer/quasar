@@ -171,8 +171,6 @@ class SerializableImpl(val c: Context) {
     val putter = generatePutter(inputType, q"value")
     val sizer = generateSizer(inputType, q"value")
 
-    println(sizer)
-
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
         def put(buffer: ByteBuffer, value: $inputType) = { $putter }
