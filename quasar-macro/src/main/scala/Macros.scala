@@ -49,6 +49,15 @@ object Serializable {
   }
 
 
+  def encode[T](value: T)(implicit serializer: Serializable[T]): ByteBuffer = {
+    val byteSize = sizeOf(value)
+    val buffer = ByteBuffer.allocate(byteSize)
+    buffer.write(value)
+    buffer.rewind
+    buffer
+  }
+
+
   implicit def materializeSerializable[T]: Serializable[T] =
     macro SerializableImpl.materializeSerializable[T]
 }

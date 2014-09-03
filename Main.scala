@@ -12,14 +12,14 @@ object QuasarMain extends App {
   val fooName = "Sir Foo"
   val barName = "Mr. Bar"
 
-  val originalBar = Bar(barName, Foo(fooName, List(1, 2, 3)))
-  val buffer = ByteBuffer.allocate(sizeOf(originalBar))
-  buffer.write(originalBar)
-  buffer.rewind
+  val foo = Foo("Sir Foo", List(9000, 42, 1337))
+  val bar = Bar("Mr. Bar", foo)
 
-  val bar = buffer.read[Bar]
+  val encodedBar = encode(bar)
+  val decodedBar = encodedBar.read[Bar]
 
-  println(bar)
+  println(decodedBar)
+  println(bar == decodedBar)
 }
 
 
