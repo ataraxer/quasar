@@ -152,22 +152,20 @@ class SerializableImpl(val c: Context) {
       case t if t <:< typeOf[Seq[Any]] => {
         val tParam = t.typeArgs.head
         val sizer = generateSizer(tParam, q"item")
-        q"""
-        4 + (for (item <- $valueId) yield $sizer).sum
-        """
+        q"4 + (for (item <- $valueId) yield $sizer).sum"
       }
 
       /* ==== Case classes ==== */
       case t => {
         val fields = caseClassFields(inputType)
 
-        val serializedParams = fields map { field =>
+        fields map { field =>
           val fieldName = field.asTerm.name
           val fieldType = field.typeSignature
           generateSizer(fieldType, q"$valueId.$fieldName")
+        } reduce { (agg, item) =>
+          q"$agg + $item"
         }
-
-        q"List(..$serializedParams).sum"
       }
     }
   }
@@ -184,7 +182,7 @@ class SerializableImpl(val c: Context) {
       new Serializable[$inputType] {
         def put(buffer: ByteBuffer, value: $inputType) = { $putter }
         def get(buffer: ByteBuffer) = { $getter }
-        def sizeOf(value: $inputType) = { List(..$sizer).sum }
+        def sizeOf(value: $inputType) = { $sizer }
       }
     """ }
   }
