@@ -76,36 +76,39 @@ class SerializableImpl(val c: Context) {
   }
 
 
-  private def generatePutter(inputType: Type, valueId: Tree): Tree = {
-    inputType match {
-      /* ==== Primitives ==== */
-      case t if t <:< typeOf[Short]  => q"buffer.putShort($valueId)"
-      case t if t <:< typeOf[Int]    => q"buffer.putInt($valueId)"
-      case t if t <:< typeOf[String] => q"buffer.putString($valueId)"
+  private def generatePutter(inputType: Type): Tree = {
+    def gen(inputType: Type, valueId: Tree): List[Tree] = {
+      inputType match {
+        /* ==== Primitives ==== */
+        case t if t <:< typeOf[Short]  => List(q"buffer.putShort($valueId)")
+        case t if t <:< typeOf[Int]    => List(q"buffer.putInt($valueId)")
+        case t if t <:< typeOf[String] => List(q"buffer.putString($valueId)")
 
-      /* ==== Sequences ==== */
-      case t if t <:< typeOf[Seq[Any]] => {
-        val tParam = t.typeArgs.head
-        val putter = generatePutter(tParam, q"item")
-        q"""
-        buffer.putInt($valueId.size)
-        for (item <- $valueId) $putter
-        """
-      }
-
-      /* ==== Case classes ==== */
-      case t => {
-        val fields = caseClassFields(inputType)
-
-        val serializedParams = fields map { field =>
-          val fieldName = field.asTerm.name
-          val fieldType = field.typeSignature
-          generatePutter(fieldType, q"$valueId.$fieldName")
+        /* ==== Sequences ==== */
+        case t if t <:< typeOf[Seq[Any]] => {
+          val tParam = t.typeArgs.head
+          val putter = gen(tParam, q"item")
+          List(
+            q"buffer.putInt($valueId.size)",
+            q"for (item <- $valueId) { ..$putter }")
         }
 
-        q"..$serializedParams"
+        /* ==== Case classes ==== */
+        case t => {
+          val fields = caseClassFields(inputType)
+
+          fields flatMap { field =>
+            val fieldName = field.asTerm.name
+            val fieldType = field.typeSignature
+            gen(fieldType, q"$valueId.$fieldName")
+          }
+        }
       }
     }
+
+    val subTrees = gen(inputType, q"value")
+
+    q"..$subTrees"
   }
 
 
@@ -140,7 +143,7 @@ class SerializableImpl(val c: Context) {
   }
 
 
-  private def generateSizer(inputType: Type, valueId: Tree): Tree = {
+  private def generateSizer(inputType: Type, valueId: Tree = q"value"): Tree = {
     inputType match {
       /* ==== Primitives ==== */
       case t if t <:< typeOf[Short]  => q"2"
@@ -175,14 +178,14 @@ class SerializableImpl(val c: Context) {
     val inputType = weakTypeOf[T]
 
     val getter = generateGetter(inputType)
-    val putter = generatePutter(inputType, q"value")
-    val sizer = generateSizer(inputType, q"value")
+    val putter = generatePutter(inputType)
+    val sizer = generateSizer(inputType)
 
     c.Expr[Serializable[T]] { q"""
       new Serializable[$inputType] {
-        def put(buffer: ByteBuffer, value: $inputType) = { $putter }
-        def get(buffer: ByteBuffer) = { $getter }
-        def sizeOf(value: $inputType) = { $sizer }
+        def put(buffer: ByteBuffer, value: $inputType) = $putter
+        def get(buffer: ByteBuffer) = $getter
+        def sizeOf(value: $inputType) = $sizer
       }
     """ }
   }
